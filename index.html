@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>เสนอพิจารณา · บอทธุรการ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#F4F6FA;--card:#FFFFFF;--ink:#1B2430;--mute:#667085;--line:#E3E8EF;--brand:#1F4E78;--ok:#1F7A4D;
+        --warn:#C77700;--bad:#C0392B;--chip:#EEF2F7;--focus:#2E6FB0}
+  @media (prefers-color-scheme: dark){:root{--bg:#0F141B;--card:#18202B;--ink:#E7ECF2;--mute:#9AA6B5;--line:#2A3442;
+        --brand:#6FA8DC;--ok:#4CC38A;--warn:#F0B44C;--bad:#F07167;--chip:#222C38;--focus:#8DBBE8}}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Sarabun,system-ui,sans-serif}
+  main{max-width:640px;margin:0 auto;padding:16px 16px 40px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:12px}
+  h1{font-size:18px;margin:0 0 4px;color:var(--brand)} h2{font-size:15px;margin:0 0 10px}
+  .meta{color:var(--mute);font-size:14px} .stage{font-weight:700;margin-top:8px}
+  .tl{list-style:none;margin:0;padding:0} .tl li{display:flex;gap:10px;padding:8px 0;border-top:1px dashed var(--line)}
+  .tl li:first-child{border-top:0} .dot{width:10px;height:10px;border-radius:50%;margin-top:7px;flex:none}
+  .s1{background:var(--warn)} .s2{background:var(--ok)} .s4{background:var(--bad)}
+  .chip{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;background:var(--chip);color:var(--mute);margin-left:6px}
+  .reason{white-space:pre-wrap;font-size:14px;margin-top:2px}
+  label{display:block;font-weight:600;font-size:14px;margin:10px 0 4px}
+  select,textarea{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px}
+  textarea{min-height:150px;resize:vertical} select:focus,textarea:focus{outline:2px solid var(--focus);outline-offset:1px}
+  .opt{display:flex;gap:8px;align-items:flex-start;padding:6px 0} .opt input{margin-top:5px}
+  .opt.dis{color:var(--mute)}
+  button{width:100%;font:inherit;font-weight:700;border:0;border-radius:12px;padding:12px;margin-top:12px;cursor:pointer;
+         background:var(--ok);color:#fff} button.sec{background:var(--chip);color:var(--ink)} button:disabled{opacity:.55}
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px} .tabs button{width:auto;margin:0;padding:8px 12px;font-size:14px;background:var(--chip);color:var(--ink)}
+  .tabs button.on{background:var(--brand);color:#fff}
+  .note{font-size:13px;color:var(--mute);margin-top:6px} .err{color:var(--bad)} .okmsg{color:var(--ok)}
+  .result{white-space:pre-wrap;font-size:15px}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<main id="app"><div class="card">กำลังเปิดฟอร์ม…</div></main>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script>
+// ───── ตั้งค่า (แก้ 2 บรรทัดนี้ครั้งเดียว) ─────
+const LIFF_ID = "ใส่_LIFF_ID";
+const API = "https://hnvnfnxvhevsmawikwyc.supabase.co/functions/v1/line-webhook";
+
+const $ = (h) => { const t = document.createElement("template"); t.innerHTML = h.trim(); return t.content.firstChild; };
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const app = document.getElementById("app");
+let TOKEN = "", FORM = null;
+
+function show(html) { app.innerHTML = html; }
+async function call(api, opt = {}) {
+  const r = await fetch(`${API}?api=${api}${opt.q || ""}`, {
+    method: opt.body ? "POST" : "GET",
+    headers: { Authorization: "Bearer " + TOKEN, ...(opt.body ? { "Content-Type": "application/json" } : {}) },
+    body: opt.body ? JSON.stringify(opt.body) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error === "forbidden" ? "บัญชี LINE นี้ไม่มีสิทธิ์ใช้งานฟอร์ม" : (j.error || ("HTTP " + r.status)));
+  return j;
+}
+
+function header(f) {
+  const d = f.doc;
+  const tl = f.timeline.length ? f.timeline.map((x) => `
+    <li><span class="dot s${x.status}"></span><div><b>${esc(x.who)}</b><span class="chip">${esc(x.status_text)}</span>
+      <div class="meta">เสนอ ${esc(x.sent || "-")}${x.done ? " · พิจารณา " + esc(x.done) : ""}${x.by ? " · โดย " + esc(x.by) : ""}</div>
+      ${x.reason ? `<div class="reason">${esc(x.reason)}</div>` : ""}</div></li>`).join("")
+    : `<li><div class="meta">ยังไม่มีการเสนอพิจารณา</div></li>`;
+  return `<div class="card"><h1>เลขรับ ${esc(d.rec_no || "-")} · ${esc(d.subject)}</h1>
+      <div class="meta">จาก ${esc(d.from || "-")} · ที่ ${esc(d.no || "-")}${d.speed && d.speed !== "ปกติ" ? " · " + esc(d.speed) : ""}</div>
+      <div class="stage">${esc(f.stage.title)}</div></div>
+    <div class="card"><h2>ลำดับการพิจารณา</h2><ul class="tl">${tl}</ul></div>`;
+}
+
+function actionHtml(a, f) {
+  if (a.key === "propose") {
+    const opts = a.people.map((p) => `<option value="${esc(p.id)}" ${p.id === a.default ? "selected" : ""}>${esc(p.name)} — ${esc(p.pos || p.role)}</option>`).join("");
+    const modes = f.sign_modes.map((m, i) => `<label class="opt ${m.disabled ? "dis" : ""}"><input type="radio" name="sm" value="${m.key}"
+        ${i === 0 ? "checked" : ""} ${m.disabled ? "disabled" : ""}> <span>${esc(m.label)}${m.disabled ? " (ยังไม่พร้อม — รอบันทึกขั้นตอนจากหน้าเว็บ)" : ""}</span></label>`).join("");
+    return `<div data-k="propose"><label for="ap">ผู้พิจารณา</label><select id="ap">${opts}</select>
+      <label for="note">คำเกษียณ (ร่างให้แล้ว แก้ไขได้)</label><textarea id="note">${esc(a.notes[a.default] || "")}</textarea>
+      <div class="note">เปลี่ยนผู้พิจารณา → ร่างคำเกษียณเปลี่ยนตาม (ถ้ายังไม่ได้แก้เอง)</div>
+      <label>วิธีเสนอ</label>${modes}<button id="go">${esc(a.label)}</button></div>`;
+  }
+  if (a.key === "sec") {
+    return `<div data-k="sec"><div class="meta">ส่งเอกสารต่อไปยัง <b>${esc(a.dest)}</b> พร้อมไฟล์ที่ลงนามแล้ว</div>
+      <label for="note">ข้อความส่ง (ว่าง = ใช้คำพิจารณาล่าสุด)</label><textarea id="note" style="min-height:90px"></textarea>
+      <button id="go">${esc(a.label)}</button></div>`;
+  }
+  if (a.key === "send") {
+    const opts = a.people.map((p) => `<option value="${esc(p.id)}" ${p.id === a.default ? "selected" : ""}>${esc(p.name)}${a.ready[p.id] ? "" : " (ยังไม่รู้รหัสแฟ้ม)"}</option>`).join("");
+    return `<div data-k="send"><label for="as">ผู้รับมอบหมาย</label><select id="as">${opts}</select>
+      <label for="note">ข้อความส่ง (ว่าง = ใช้คำพิจารณาของหัวหน้า)</label><textarea id="note" style="min-height:90px"></textarea>
+      <button id="go">${esc(a.label)}</button></div>`;
+  }
+  if (a.key === "draft") {
+    const opts = a.options.map(([k, label]) => `<label class="opt"><input type="radio" name="dk" value="${esc(k)}" ${k === a.default ? "checked" : ""}> <span>${esc(label)}</span></label>`).join("");
+    return `<div data-k="draft">${a.order ? `<div class="meta">ข้อสั่งการ</div><div class="reason">${esc(a.order)}</div>` : ""}
+      <div class="meta" style="margin-top:8px">วิเคราะห์: <b>${esc(a.task)}</b></div>
+      <label>ร่างหนังสือแบบไหน</label>${opts}<button id="go">${esc(a.label)}</button>
+      <div class="note">ร่างจากแม่แบบ บันทึกไว้ในโฟลเดอร์ 02_ร่างหนังสือ — มีช่อง [....] ให้เติม ตรวจทานก่อนใช้เสมอ</div></div>`;
+  }
+  return "";
+}
+
+function render(f) {
+  if (!f.actions.length) { show(header(f) + `<div class="card">ขั้นนี้ไม่มีอะไรต้องทำในฟอร์ม</div>`); return; }
+  const tabs = f.actions.length > 1 ? `<div class="tabs">${f.actions.map((a, i) => `<button data-i="${i}" class="${i ? "" : "on"}">${esc(a.label)}</button>`).join("")}</div>` : "";
+  show(header(f) + `<div class="card">${tabs}<div id="act"></div></div><div id="out"></div>`);
+  const pick = (i) => {
+    document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", +b.dataset.i === i));
+    const a = f.actions[i]; const box = document.getElementById("act"); box.innerHTML = actionHtml(a, f);
+    if (a.key === "propose") {
+      const sel = box.querySelector("#ap"), ta = box.querySelector("#note"); let dirty = false;
+      ta.addEventListener("input", () => (dirty = true));
+      sel.addEventListener("change", () => { if (!dirty) ta.value = a.notes[sel.value] || ""; });
+    }
+    box.querySelector("#go").addEventListener("click", () => submit(a, box));
+  };
+  document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => pick(+b.dataset.i)));
+  pick(0);
+}
+
+async function submit(a, box) {
+  const btn = box.querySelector("#go"); btn.disabled = true; btn.textContent = "กำลังส่งคำสั่ง…";
+  const v = (s) => box.querySelector(s)?.value ?? "";
+  const body = { id: FORM.id, sig: FORM.sig, action: a.key, note: v("#note") };
+  if (a.key === "propose") { body.approver = v("#ap"); body.sign_mode = box.querySelector('input[name="sm"]:checked')?.value || "0"; }
+  if (a.key === "send") body.assignee = v("#as");
+  if (a.key === "draft") body.draft = box.querySelector('input[name="dk"]:checked')?.value || "";
+  const out = document.getElementById("out");
+  try {
+    const r = await call("submit", { body });
+    out.innerHTML = `<div class="card"><div class="okmsg">✅ ส่งคำสั่งแล้ว${r.bot_alive ? " — บอทกำลังทำ…" : " — บอทในเครื่องยังไม่ออนไลน์ จะทำเมื่อเครื่องเปิด"}</div><div id="res" class="result"></div></div>`;
+    if (liff.isInClient()) {
+      const nm = a.key === "propose" ? "เสนอ " + (a.people.find((p) => p.id === body.approver)?.name || "") : a.label.replace(/^\S+\s/, "");
+      try { await liff.sendMessages([{ type: "text", text: `📝 ${nm} — เลขรับ ${FORM.doc.rec_no || "-"} (#${r.code})` }]); } catch (e) {}
+    }
+    for (let i = 0; i < 25; i++) {                                   // แสดงผลบนหน้าฟอร์ม (ไม่เกิน ~50 วินาที)
+      await new Promise((ok) => setTimeout(ok, 2000));
+      const s = await call("status", { q: "&code=" + r.code }).catch(() => ({}));
+      if (s.result) { document.getElementById("res").textContent = s.result; break; }
+    }
+    out.insertAdjacentHTML("beforeend", `<button class="sec" onclick="liff.closeWindow()">ปิดหน้าฟอร์ม</button>`);
+  } catch (e) {
+    btn.disabled = false; btn.textContent = a.label;
+    out.innerHTML = `<div class="card err">❌ ${esc(e.message)}</div>`;
+  }
+}
+
+(async () => {
+  try {
+    await liff.init({ liffId: LIFF_ID });
+    if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+    TOKEN = liff.getIDToken();
+    const id = new URLSearchParams(location.search).get("id");
+    if (!id) { show(`<div class="card err">ไม่พบรหัสหนังสือในลิงก์ — เปิดจากปุ่ม 📝 ในการ์ด LINE</div>`); return; }
+    const j = await call("form", { q: "&id=" + encodeURIComponent(id) });
+    if (!j.form) { show(`<div class="card">หนังสือนี้ไม่มีขั้นที่ต้องทำในฟอร์มแล้ว (อาจดำเนินการไปแล้ว) — กด 📥 หนังสือรอทำ ในแชทเพื่อดูสถานะล่าสุด</div>`); return; }
+    FORM = j.form; render(FORM);
+  } catch (e) { show(`<div class="card err">❌ เปิดฟอร์มไม่ได้: ${esc(e.message)}</div>`); }
+})();
+</script>
+</body>
+</html>
